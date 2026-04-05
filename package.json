@@ -1,0 +1,22 @@
+{
+  "name": "groqtest",
+  "version": "1.0.0",
+  "description": "Mini app para probar la API de Groq",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "docx": "^9.6.1",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1",
+    "groq-sdk": "^1.1.2",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.12.0",
+    "multer": "^2.1.1"
+  }
+}
