@@ -203,7 +203,7 @@ app.delete("/api/novels/:novelId/translate/:translationId", (req, res) => {
   novel.translations = novel.translations.filter((entry) => entry.id !== req.params.translationId);
 
   if (novel.translations.length === previousSize) {
-    return res.status(404).json({ error: "TraducciÃ³n no encontrada." });
+    return res.status(404).json({ error: "Traducción no encontrada." });
   }
 
   novel.updatedAt = new Date().toISOString();
@@ -317,6 +317,9 @@ app.post("/api/novels/:novelId/translate", async (req, res) => {
         missingTerms: missingGlossaryTerms
       };
     }
+
+    // Agregar saltos de línea después de punto y espacio seguido de mayúscula o signos de apertura
+    translatedText = translatedText.replace(/\.\s+([¿¡"“'‘]*[A-ZÁÉÍÓÚÑ])/g, ".\n\n$1");
 
     const translation = {
       id: randomUUID(),
@@ -774,7 +777,7 @@ function normalizeImportedText(text) {
 }
 
 function splitTextByChapterHeaders(sourceText) {
-  const headingRegex = /^(capitulo|capÃ­tulo|chapter|ch\.?|prologo|prÃ³logo|epilogo|epÃ­logo)\b/i;
+  const headingRegex = /^(capitulo|capítulo|chapter|ch\.?|prologo|prólogo|epilogo|epílogo)\b/i;
   const lines = String(sourceText || "").split("\n");
   const chapters = [];
   let currentTitle = "Capitulo 1";

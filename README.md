@@ -15,7 +15,7 @@ Construida para ofrecer traducciones rápidas, precisas y coherentes mediante el
 ##  Características Principales
 
 *   **Traducciones Ultrarrápidas:** Integración directa con la API de Groq para aprovechar velocidades de inferencia extremas.
-*   **Sistema de Glosarios Estricto:** Mantén la coherencia en nombres, términos y lugares en todos los capítulos. ¡El LLM está instruido para respetar tu glosario por encima de todo!
+*   **Sistema de Glosarios Estricto:** Mantén la coherencia en nombres, términos y lugares en todos los capítulos ; ¡El LLM está instruido para respetar tu glosario por encima de todo!
 *   **Seguimiento de Consumo de Tokens:** Monitor en tiempo real de los tokens consumidos por modelo directamente desde la interfaz, almacenado localmente en tu navegador (LocalStorage).
 *   **Gestión de Proyectos/Novelas:** Organiza tus traducciones por "Novelas". Cada novela guarda su propio historial de capítulos, glosarios y progreso de forma estructurada.
 *   **Exportación Multiformato:** Exporta tus traducciones y resultados unificados al instante (Soporte nativo a `.txt`).
