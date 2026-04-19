@@ -39,8 +39,8 @@ Construida para ofrecer traducciones rápidas, precisas y coherentes mediante el
 
 1.  **Clonar el repositorio:**
     ```bash
-    git clone https://github.com/tu-usuario/cypher-novel-translator.git
-    cd cypher-novel-translator
+    https://github.com/FxxMorgan/Groq-Translator.git
+    cd Groq-Translator
     ```
 
 2.  **Instalar dependencias del servidor:**
