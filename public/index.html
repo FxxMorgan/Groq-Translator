@@ -363,6 +363,20 @@
                     <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1" for="chapter-title">Rótulo (Título)</label>
                     <input id="chapter-title" class="w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none" placeholder="Capitulo 1" />
                   </div>
+                    <div>
+                      <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1" for="max-tokens">Max tokens (salida)</label>
+                      <input id="max-tokens" type="number" min="256" step="256" value="4096" class="w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none" />
+                    </div>
+                    <div class="flex items-end gap-3">
+                      <label class="flex items-center gap-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase select-none" for="auto-chunk">
+                        <input id="auto-chunk" type="checkbox" checked class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500/30" />
+                        Auto-chunk
+                      </label>
+                      <div class="flex-1">
+                        <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1" for="chunk-size">Chunk (chars)</label>
+                        <input id="chunk-size" type="number" min="2000" step="500" value="9000" class="w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none" />
+                      </div>
+                    </div>
                 </div>
                 <button id="translate-btn" type="button" class="shrink-0 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-accent-500 px-8 py-3 text-sm font-bold text-white shadow-lg shadow-brand-500/30 transition hover:scale-105 hover:from-brand-700 hover:to-accent-600">
                   <i class="ph ph-magic-wand text-lg"></i> Traducir

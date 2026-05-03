@@ -14,6 +14,9 @@ const modelSelect = document.getElementById("model");
 const targetLanguageInput = document.getElementById("target-language");
 const chapterTitleInput = document.getElementById("chapter-title");
 const sourceTextInput = document.getElementById("source-text");
+const maxTokensInput = document.getElementById("max-tokens");
+const autoChunkInput = document.getElementById("auto-chunk");
+const chunkSizeInput = document.getElementById("chunk-size");
 const translateBtn = document.getElementById("translate-btn");
 const sourceFileInput = document.getElementById("source-file");
 const importSourceBtn = document.getElementById("import-source-btn");
@@ -195,6 +198,9 @@ translateBtn.addEventListener("click", async () => {
     const sourceText = sourceTextInput.value.trim();
     const model = modelSelect.value;
     const targetLanguage = targetLanguageInput.value.trim() || "espanol";
+    const maxTokens = maxTokensInput ? Number(maxTokensInput.value) : undefined;
+    const autoChunk = autoChunkInput ? Boolean(autoChunkInput.checked) : true;
+    const chunkSize = chunkSizeInput ? Number(chunkSizeInput.value) : undefined;
 
     if (!sourceText) {
       throw new Error("Debes ingresar texto a traducir.");
@@ -208,7 +214,12 @@ translateBtn.addEventListener("click", async () => {
         chapterTitle,
         sourceText,
         model,
-        targetLanguage
+        targetLanguage,
+        maxTokens: Number.isFinite(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : undefined,
+        chunking: {
+          enabled: autoChunk,
+          maxChunkChars: Number.isFinite(chunkSize) && chunkSize > 0 ? Math.floor(chunkSize) : undefined
+        }
       }
     });
 
@@ -551,11 +562,15 @@ function renderTranslation(translationId) {
 
 function buildUsageText(translation) {
   const complianceInfo = buildComplianceText(translation?.compliance);
+  const finishInfo = translation?.finishReason ? `finish: ${translation.finishReason}` : "finish: ?";
+  const chunkInfo = translation?.chunking?.enabled
+    ? `chunks: ${translation.chunking.chunks || "?"}`
+    : "chunks: 1";
 
   if (!translation?.usage) {
-    return `Modelo: ${translation?.model || "desconocido"} | ${complianceInfo}`;
+    return `Modelo: ${translation?.model || "desconocido"} | ${finishInfo} | ${chunkInfo} | ${complianceInfo}`;
   }
-  return `Modelo: ${translation.model} | Tokens prompt ${translation.usage.prompt_tokens || 0} | completion ${translation.usage.completion_tokens || 0} | total ${translation.usage.total_tokens || 0} | ${complianceInfo}`;
+  return `Modelo: ${translation.model} | Tokens prompt ${translation.usage.prompt_tokens || 0} | completion ${translation.usage.completion_tokens || 0} | total ${translation.usage.total_tokens || 0} | ${finishInfo} | ${chunkInfo} | ${complianceInfo}`;
 }
 
 function buildComplianceText(compliance) {

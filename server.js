@@ -216,6 +216,21 @@ app.post("/api/novels/:novelId/translate", async (req, res) => {
   const chapterTitle = String(req.body?.chapterTitle || "").trim() || "Capitulo";
   const model = String(req.body?.model || defaultModel).trim();
   const targetLanguage = String(req.body?.targetLanguage || "espanol").trim();
+  const requestedMaxTokens = Number(req.body?.maxTokens);
+  const envMaxTokens = Number(process.env.GROQ_MAX_TOKENS);
+  const maxTokens = Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0
+    ? Math.floor(requestedMaxTokens)
+    : Number.isFinite(envMaxTokens) && envMaxTokens > 0
+      ? Math.floor(envMaxTokens)
+      : 4096;
+  const chunkingEnabled = Boolean(req.body?.chunking?.enabled ?? true);
+  const requestedChunkChars = Number(req.body?.chunking?.maxChunkChars);
+  const envChunkChars = Number(process.env.GROQ_CHUNK_CHARS);
+  const maxChunkChars = Number.isFinite(requestedChunkChars) && requestedChunkChars > 0
+    ? Math.floor(requestedChunkChars)
+    : Number.isFinite(envChunkChars) && envChunkChars > 0
+      ? Math.floor(envChunkChars)
+      : 9000;
 
   if (!sourceText) {
     return res.status(400).json({ error: "Debes enviar texto de origen." });
@@ -248,22 +263,89 @@ app.post("/api/novels/:novelId/translate", async (req, res) => {
     .join("\n\n");
 
   try {
-    const completion = await groq.chat.completions.create({
-      model,
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `Por favor, TRADUCE el siguiente capítulo al idioma ${targetLanguage}.\n\nTítulo del capitulo: ${chapterTitle}\n\nTexto original:\n${tokenizedSourceText}\n\nSolo dame el resultado final ya traducido.`
-        }
-      ]
-    });
+    const estimatedInputTokens = estimateTokens(systemPrompt) + estimateTokens(tokenizedSourceText) + 250;
+    const shouldChunk = chunkingEnabled && (tokenizedSourceText.length > maxChunkChars || estimatedInputTokens > 5500);
+    let chunks = shouldChunk ? chunkTextByParagraphs(tokenizedSourceText, maxChunkChars) : [tokenizedSourceText];
 
-    let firstPassTranslated = completion.choices?.[0]?.message?.content || "";
-    // Eliminar etiquetas <think> para los modelos de razonamiento (ej. Qwen)
-    firstPassTranslated = firstPassTranslated.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-    
+    let combinedWithTokens = "";
+    let finishReasons = [];
+    let combinedUsage = null;
+    let previousTranslatedTail = "";
+    let didAutoRetryChunking = false;
+
+    for (let i = 0; i < chunks.length; i += 1) {
+      const part = chunks[i];
+      const partHeader = chunks.length > 1 ? `Parte ${i + 1} de ${chunks.length}` : "";
+      const continuity = previousTranslatedTail
+        ? `Contexto breve (solo para mantener estilo/continuidad, no lo repitas):\n${previousTranslatedTail}\n\n`
+        : "";
+
+      const completion = await groq.chat.completions.create({
+        model,
+        temperature: 0.2,
+        max_tokens: maxTokens,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              `Por favor, TRADUCE al idioma ${targetLanguage} el siguiente contenido.`,
+              partHeader ? `(${partHeader})` : "",
+              "Reglas extra: NO agregues títulos, NO numeres, NO resumas, NO omitas. Mantén saltos de línea.",
+              "",
+              `Título del capitulo: ${chapterTitle}`,
+              "",
+              continuity,
+              `Texto original:\n${part}`,
+              "",
+              "Devuelve SOLO la traducción final."
+            ]
+              .filter(Boolean)
+              .join("\n")
+          }
+        ]
+      });
+
+      let translated = completion.choices?.[0]?.message?.content || "";
+      const finishReason = completion.choices?.[0]?.finish_reason || null;
+      finishReasons.push(finishReason);
+      combinedUsage = mergeUsage(combinedUsage, completion.usage);
+
+      // Si NO estábamos en chunks (1 sola parte) y se truncó, reintentamos automáticamente en modo chunking
+      if (
+        chunkingEnabled &&
+        !didAutoRetryChunking &&
+        chunks.length === 1 &&
+        finishReason === "length" &&
+        tokenizedSourceText.length > 2500
+      ) {
+        didAutoRetryChunking = true;
+        const retryChunkChars = Math.max(2500, Math.floor(maxChunkChars / 2));
+        chunks = chunkTextByParagraphs(tokenizedSourceText, retryChunkChars);
+        combinedWithTokens = "";
+        finishReasons = [];
+        combinedUsage = null;
+        previousTranslatedTail = "";
+        i = -1; // reiniciar bucle con nuevos chunks
+        continue;
+      }
+
+      translated = translated.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
+      if (translated) {
+        combinedWithTokens += (combinedWithTokens ? "\n\n" : "") + translated;
+        previousTranslatedTail = String(translated).slice(-700);
+      }
+
+      // Si se truncó incluso en chunking, evitamos meter demasiado contexto para no empeorar el prompt siguiente
+      if (finishReason === "length") {
+        previousTranslatedTail = "";
+      }
+    }
+
+    let firstPassTranslated = combinedWithTokens;
+    const firstPassFinishReason = finishReasons.length ? finishReasons[finishReasons.length - 1] : null;
+
     let translatedText = restoreGlossaryTokens(firstPassTranslated, tokenMap);
     let missingGlossaryTerms = findMissingGlossaryTerms(translatedText, tokenMap);
     let compliance = {
@@ -272,7 +354,7 @@ app.post("/api/novels/:novelId/translate", async (req, res) => {
       passes: 1,
       missingTerms: missingGlossaryTerms
     };
-    let finalUsage = completion.usage || null;
+    let finalUsage = combinedUsage;
 
     if (missingGlossaryTerms.length > 0 && tokenMap.length > 0) {
       const repairPrompt = [
@@ -294,6 +376,7 @@ app.post("/api/novels/:novelId/translate", async (req, res) => {
       const repairCompletion = await groq.chat.completions.create({
         model,
         temperature: 0,
+        max_tokens: maxTokens,
         messages: [
           {
             role: "system",
@@ -309,7 +392,7 @@ app.post("/api/novels/:novelId/translate", async (req, res) => {
 
       translatedText = restoreGlossaryTokens(repairedWithTokens, tokenMap);
       missingGlossaryTerms = findMissingGlossaryTerms(translatedText, tokenMap);
-      finalUsage = mergeUsage(completion.usage, repairCompletion.usage);
+      finalUsage = mergeUsage(finalUsage, repairCompletion.usage);
       compliance = {
         strict: missingGlossaryTerms.length === 0,
         repaired: true,
@@ -328,7 +411,17 @@ app.post("/api/novels/:novelId/translate", async (req, res) => {
       translatedText,
       targetLanguage,
       model,
+      maxTokens,
       usage: finalUsage,
+      finishReason: firstPassFinishReason,
+      chunking: (chunks.length > 1 || didAutoRetryChunking)
+        ? {
+            enabled: true,
+            maxChunkChars,
+            chunks: chunks.length,
+            finishReasons
+          }
+        : { enabled: false, chunks: 1, finishReasons },
       compliance,
       createdAt: new Date().toISOString()
     };
@@ -583,6 +676,58 @@ function mergeUsage(first, second) {
   }
 
   return merged;
+}
+
+function estimateTokens(text) {
+  // Estimación simple (aprox 1 token ~ 4 chars en promedio para texto)
+  return Math.ceil(String(text || "").length / 4);
+}
+
+function chunkTextByParagraphs(text, maxChars) {
+  const normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const blocks = normalized.split(/\n{2,}/);
+  const chunks = [];
+  let current = "";
+
+  const pushCurrent = () => {
+    const trimmed = current.trim();
+    if (trimmed) chunks.push(trimmed);
+    current = "";
+  };
+
+  for (const block of blocks) {
+    const b = block.trim();
+    if (!b) continue;
+
+    const candidate = current ? `${current}\n\n${b}` : b;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+      continue;
+    }
+
+    // Si un bloque por sí solo es enorme, partir por líneas
+    if (!current && b.length > maxChars) {
+      const lines = b.split("\n");
+      let lineAcc = "";
+      for (const line of lines) {
+        const cand = lineAcc ? `${lineAcc}\n${line}` : line;
+        if (cand.length <= maxChars) {
+          lineAcc = cand;
+        } else {
+          if (lineAcc.trim()) chunks.push(lineAcc.trim());
+          lineAcc = line;
+        }
+      }
+      if (lineAcc.trim()) chunks.push(lineAcc.trim());
+      continue;
+    }
+
+    pushCurrent();
+    current = b.length <= maxChars ? b : b.slice(0, maxChars);
+  }
+
+  pushCurrent();
+  return chunks.length ? chunks : [normalized.trim()];
 }
 
 function escapeRegExp(value) {
